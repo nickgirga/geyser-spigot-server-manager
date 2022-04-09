@@ -43,9 +43,12 @@ The Geyser-Spigot Server Manager (or GSSM) is a tool that makes setting up a cro
 # What is Planned?
  - The ability to choose the version of Minecraft the Spigot server will be compatible with
  - The ability to choose the version of Java to use
+ - The ability to choose the Spigot server executable to run (in the case that numerous versions are installed)
  - A full plugin manager that will allow users to view installed plugins, enable and disable them, delete them, back them up, revert to backups, download new plugins from specified sources, and keep all plugins (including the custom ones) up-to-date using the provided download sources
  - A world manager that will allow users to view existing worlds, enable and disable them, delete them, back them up, revert to backups, and rename them
  - A player manager that will allow users to view all players that have joined, edit their inventories, edit their player stats, kick/unkick them, ban/unban them, edit their scoreboard stats, and change their teams
+ - A server version manager that will allow users to view all available versions of Spigot server executables and remove them
+ - A self-update system for GSSM
  - A download verification system to ensure that update files have not been corrupted or tampered with
  - A config editor that allows users to quickly edit common server and plugin settings
  - A config checking system to prompt the user to fix it if they try to run the server with an invalid config
