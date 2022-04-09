@@ -96,9 +96,10 @@ def run_server(check_for_updates, restart_server_prompt):
         # check server configs for critical mistakes and warn user to fix them
         # TODO [low priority]: implement (use "[M] - Manage Server" function)
 
-        # log start time
         os.system("clear")
         print("Starting Spigot server...\n")
+        # log start time
+        # TODO: implement
 
         # get the current server executable
         current_spigot_exe = get_current_spigot_exe()
