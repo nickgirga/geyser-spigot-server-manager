@@ -34,10 +34,10 @@ BUILD_TOOLS_REMOTE_LOCATION = "https://hub.spigotmc.org/jenkins/job/BuildTools/l
 BUILD_TOOLS_FILE = "BuildTools.jar"
 
 PLUGIN_DIRECTORY = "./plugins"
-# this plugin is responsible for allowing Bedrock players to connect to Java servers
+# this plugin is responsible for allowing Bedrock players to connect to Java servers; see here for more info: https://github.com/GeyserMC/Geyser
 GEYSER_REMOTE_LOCATION = "https://ci.opencollab.dev/job/GeyserMC/job/Geyser/job/master/lastSuccessfulBuild/artifact/bootstrap/spigot/target/Geyser-Spigot.jar"
 GEYSER_FILE = "Geyser-Spigot.jar"
-# this plugin is responsible for allowing Bedrock players to play on an "online" Java server (requires Geyser)
+# this plugin is responsible for allowing Bedrock players to play on an "online" Java server (requires Geyser); see here for more info: https://github.com/GeyserMC/Floodgate
 FLOODGATE_REMOTE_LOCATION = "https://ci.opencollab.dev/job/GeyserMC/job/Floodgate/job/master/lastSuccessfulBuild/artifact/spigot/target/floodgate-spigot.jar"
 FLOODGATE_FILE = "floodgate-spigot.jar"
 
