@@ -69,10 +69,10 @@ def get_current_spigot_exe() -> str:
 
 # returns true if directory existed before the function was called; creates missing directory if specified
 def directory_exists(path: str, create_if_missing = True) -> bool:
-    # check if GSSM directory exists
+    # check if directory exists
     if (not os.path.isdir(path)):
         if (VERBOSE):
-            print("WARN: The GSSM directory could not be found. Creating a new one...")
+            print("WARN: The directory could not be found (" + path + "). Creating a new one...")
         if (create_if_missing):
             os.mkdir(path)
         return False
