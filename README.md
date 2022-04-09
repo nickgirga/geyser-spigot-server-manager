@@ -36,7 +36,7 @@ The Geyser-Spigot Server Manager (or GSSM) is a tool that makes setting up a cro
 
 # What Works?
  - Downloading Spigot BuildTools and building the server files (otherwise updating the server)
- - Downloading required plugins for Bedrock players to be able to join
+ - Downloading required plugins for Bedrock players to be able to join (otherwise updating plugins)
  - Running the server
  - Checking the last time the server files or the plugins were updated
 
