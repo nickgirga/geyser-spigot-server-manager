@@ -6,7 +6,7 @@ The Geyser-Spigot Server Manager (or GSSM) is a tool that makes setting up a cro
  - Java [[java.com](https://www.java.com/en/download/)/[oracle.com](https://www.oracle.com/java/technologies/downloads/)]
  - Python 3 [[python.org](https://www.python.org/downloads/)]
  - git [[git-scm.com](https://git-scm.com/downloads)]
- - konsole (only if you intend to use the `run.sh` script to run `gssm`) [[invent.kde.org](https://konsole.kde.org/download.html)]
+ - konsole (only if you intend to use the `run.sh` script to run `gssm`) [[konsole.kde.org](https://konsole.kde.org/download.html)]
 
 # Basic Setup
  - Ensure you have the required [dependencies](#Dependencies) to run GSSM
@@ -43,7 +43,7 @@ The Geyser-Spigot Server Manager (or GSSM) is a tool that makes setting up a cro
 
 # What Works?
  - Downloading Spigot BuildTools and building the server files (otherwise updating the server)
- - Downloading required plugins for Bedrock players to be able to join (otherwise updating plugins)
+ - Downloading required plugins for Bedrock players to be able to join (otherwise updating the plugins)
  - Running the server
  - Checking the last time the server files or the plugins were updated
 
