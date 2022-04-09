@@ -5,7 +5,7 @@ The Geyser-Spigot Server Manager (or GSSM) is a tool that makes setting up a cro
  - Linux (GSSM was developed to be used on Linux servers, but may be adaptable to other platforms)
  - Java [[java.com](https://www.java.com/en/download/)/[oracle.com](https://www.oracle.com/java/technologies/downloads/)]
  - Python 3 [[python.org](https://www.python.org/downloads/)]
- - git [[git-scm.com](https://git-scm.com/)]
+ - git [[git-scm.com](https://git-scm.com/downloads)]
  - konsole (only if you intend to use the `run.sh` script to run `gssm`) [[invent.kde.org](https://invent.kde.org/utilities/konsole)]
 
 # Basic Setup
