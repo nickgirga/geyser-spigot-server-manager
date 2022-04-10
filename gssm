@@ -55,16 +55,6 @@ last_plugin_update_time: str
 
 main_menu_loop_running = True
 
-""" version check """
-output = subprocess.run(["python", "--version"], capture_output=True)
-version_string = output.stdout.decode("UTF-8")
-version_int = []
-i = 0
-for segment in version_string.split("."):
-    version_int[i] = int(segment)
-for x in version_int:
-    print(str(x))
-
 """ functions """
 # returns the path of the current spigot server executable
 # TODO: allow user to configure the version to use
