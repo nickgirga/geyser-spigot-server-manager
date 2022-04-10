@@ -188,12 +188,13 @@ def update_server(clear_on_start: bool, pause_when_done: bool, verify_hash: bool
         os.system("clear")
     print("Updating server...\n")
     
-    # download files
+    # download build tools
     print("Downloading \"" + BUILD_TOOLS_FILE + "\"...")
     print("Source: \"" + BUILD_TOOLS_REMOTE_LOCATION + "\"")
     subprocess.run(["curl", "-o", BUILD_TOOLS_FILE, BUILD_TOOLS_REMOTE_LOCATION])
     print("Finished downloading \"" + BUILD_TOOLS_FILE + "\" from remote location!\n")
 
+    # verify hash of build tools
     if verify_hash:
         if not check_md5_jenkins(BUILD_TOOLS_FILE, BUILD_TOOLS_REMOTE_LOCATION):
             print("ERROR!: BuildTools failed file verification. This can indicate numerous things, but the most common is an interupped download.")
@@ -231,6 +232,7 @@ def update_plugins(pause_when_done: bool, verify_hash: bool):
     subprocess.run(["curl", "-o", PLUGIN_DIRECTORY + "/" + GEYSER_FILE, GEYSER_REMOTE_LOCATION])
     print("Finished downloading \"" + PLUGIN_DIRECTORY + "/" + GEYSER_FILE + "\" from remote location!\n")
 
+    # verify hash of geyser
     if verify_hash:
         if not check_md5_jenkins(PLUGIN_DIRECTORY + "/" + GEYSER_FILE, GEYSER_REMOTE_LOCATION):
             print("ERROR!: Geyser failed file verification. This can indicate numerous things, but the most common is an interupped download.")
@@ -239,11 +241,13 @@ def update_plugins(pause_when_done: bool, verify_hash: bool):
             input("Press enter to return to the main menu...")
             return
 
+    # download floodgate
     print("Downloading \"" + PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE + "\"...")
     print("Source: \"" + FLOODGATE_REMOTE_LOCATION + "\"")
     subprocess.run(["curl", "-o", PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE, FLOODGATE_REMOTE_LOCATION])
     print("Finished downloading \"" + PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE + "\" from remote location!\n")
     
+    # verify hash of floodgate
     if verify_hash:
         if not check_md5_jenkins(PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE, FLOODGATE_REMOTE_LOCATION):
             print("ERROR!: Floodgate failed file verification. This can indicate numerous things, but the most common is an interupped download.")
