@@ -24,10 +24,17 @@
 import datetime, os, subprocess, sys, urllib
 
 """ constants """
+MD5_LENGTH = 32
+
 GSSM_DIRECTORY = "./.gssm" # remove trailing forward/back slashes
 
 LAST_SERVER_UPDATE_TIME_FILE = GSSM_DIRECTORY + "/last_server_update_time"
 LAST_PLUGIN_UPDATE_TIME_FILE = GSSM_DIRECTORY + "/last_plugin_update_time"
+
+# added to the end of a Jenkins URL to see the web page with the md5 on it
+JENKINS_FINGERPRINT_SUFFIX = "/*fingerprint*/"
+# what to save the Jenkins fingerprint webpage as
+JENKINS_FINGERPRINT_FILE = ".jenkins_fingerprint.html"
 
 # this tool is responsible for building the spigot server executable; see here for more info: https://www.spigotmc.org/wiki/buildtools/#what-is-it
 BUILD_TOOLS_REMOTE_LOCATION = "https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar"
@@ -76,6 +83,52 @@ def directory_exists(path: str, create_if_missing = True) -> bool:
         if (create_if_missing):
             os.mkdir(path)
         return False
+    return True
+
+# returns md5 for a Jenkins artifact from its url
+def get_md5_jenkins(artifact_url: str) -> str:
+    print("Retrieving fingerprint for file verification...")
+    subprocess.run(["curl", "-o", JENKINS_FINGERPRINT_FILE, artifact_url + JENKINS_FINGERPRINT_SUFFIX])
+    if not os.path.isfile(JENKINS_FINGERPRINT_FILE):
+        print("ERROR!: The fingerprint from Jenkins could not be retrieved! (" + artifact_url + JENKINS_FINGERPRINT_SUFFIX + ")")
+        return ""
+    print("Finished retrieving fingerprint!\n")
+    
+    md5 = ""
+    print("Parsing MD5 hash...")
+    with open(JENKINS_FINGERPRINT_FILE, "r") as fingerprint:
+        for line in fingerprint.readlines():
+            if ("md5" in line):
+                _md5 = line[len("      </h1><div class=\"md5sum\">MD5: "):-len("</div><div>") - 1]
+                print("Found MD5 hash (" + _md5 + ")!\n")
+                md5 = _md5
+    if not md5 == "":
+        os.remove(JENKINS_FINGERPRINT_FILE)
+        return md5
+
+    os.remove(JENKINS_FINGERPRINT_FILE)
+    print("ERROR!: Could not find MD5 hash within the fingerprint retrieved from \"" + artifact_url + JENKINS_FINGERPRINT_SUFFIX + "\"!")
+    return ""
+
+# returns true if the md5 hash for local_file matches the md5 hash for the file stored at artifact_url
+def check_md5_jenkins(local_file: str, artifact_url: str) -> bool:
+    # retrieve md5 hash from server
+    md5_remote = get_md5_jenkins(artifact_url)
+    if md5_remote == "":
+        return False
+
+    # calculate md5 hash of local_file
+    print("Calculating MD5 hash of \"" + local_file + "\"...")
+    output = subprocess.run(["md5sum", local_file], capture_output = True)
+    md5_local = output.stdout.decode("UTF-8")[:MD5_LENGTH]
+    print("Finished calculating MD5 hash of \"" + local_file + "\" (" + md5_local + ")!\n")
+
+    # compare the hash retrieved from the server and the hash calculated from local_file
+    print("Comparing hashes...")
+    if not md5_local == md5_remote:
+        print("ERROR!: Hash mismatch! The hash of the local file (MD5: " + md5_local + ") does not match the hash that the remote location is providing (MD5: " + md5_remote + ")!\n")
+        return False
+    print("Hashes match!\n")
     return True
 
 # starts the server
@@ -130,7 +183,7 @@ def run_server(check_for_updates, restart_server_prompt):
             break
 
 # installs and updates the base server files
-def update_server(clear_on_start = True, pause_when_done = True):
+def update_server(clear_on_start: bool, pause_when_done: bool, verify_hash: bool):
     if (clear_on_start):
         os.system("clear")
     print("Updating server...\n")
@@ -140,7 +193,14 @@ def update_server(clear_on_start = True, pause_when_done = True):
     print("Source: \"" + BUILD_TOOLS_REMOTE_LOCATION + "\"")
     subprocess.run(["curl", "-o", BUILD_TOOLS_FILE, BUILD_TOOLS_REMOTE_LOCATION])
     print("Finished downloading \"" + BUILD_TOOLS_FILE + "\" from remote location!\n")
-    
+
+    if verify_hash:
+        if not check_md5_jenkins(BUILD_TOOLS_FILE, BUILD_TOOLS_REMOTE_LOCATION):
+            print("ERROR!: BuildTools failed file verification. This can indicate numerous things, but the most common is an interupped download.")
+            print("Give the update a couple more tries. If file verification continues to be problematic, you can update the server without file verification by running `gssm update server --skip-hash`.")
+            print("Be aware that this will disable file verification, meaning you may be running corrupted and incomplete files.\n")
+            input("Press enter to return to the main menu...")
+        
     # run/build
     # TODO: add the ability to specify the version of Minecraft the server will be compatible with (e.g. adds "--rev 1.18.2" to the end of the command)
     print("Executing \"java -jar ./BuildTools.jar\"...")
@@ -158,24 +218,40 @@ def update_server(clear_on_start = True, pause_when_done = True):
     
 # installs and updates core plugins such as Geyser
 # I intend to eventually make a plugin manager that will allow you to add custom sources, so this function can update other plugins as well
-def update_plugins(pause_when_done = True):
+def update_plugins(pause_when_done: bool, verify_hash: bool):
     os.system("clear")
     print("Updating plugins...\n")
         
     # check if plugin directory exists; if not, create it
     directory_exists(PLUGIN_DIRECTORY)
 
-    # download files
+    # download geyser
     print("Downloading \"" + PLUGIN_DIRECTORY + "/" + GEYSER_FILE + "\"...")
     print("Source: \"" + GEYSER_REMOTE_LOCATION + "\"")
     subprocess.run(["curl", "-o", PLUGIN_DIRECTORY + "/" + GEYSER_FILE, GEYSER_REMOTE_LOCATION])
     print("Finished downloading \"" + PLUGIN_DIRECTORY + "/" + GEYSER_FILE + "\" from remote location!\n")
+
+    if verify_hash:
+        if not check_md5_jenkins(PLUGIN_DIRECTORY + "/" + GEYSER_FILE, GEYSER_REMOTE_LOCATION):
+            print("ERROR!: Geyser failed file verification. This can indicate numerous things, but the most common is an interupped download.")
+            print("Give the update a couple more tries. If file verification continues to be problematic, you can update plugins without file verification by running `gssm update plugins --skip-hash`.")
+            print("Be aware that this will disable file verification, meaning you may be running corrupted and incomplete files.\n")
+            input("Press enter to return to the main menu...")
+            return
 
     print("Downloading \"" + PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE + "\"...")
     print("Source: \"" + FLOODGATE_REMOTE_LOCATION + "\"")
     subprocess.run(["curl", "-o", PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE, FLOODGATE_REMOTE_LOCATION])
     print("Finished downloading \"" + PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE + "\" from remote location!\n")
     
+    if verify_hash:
+        if not check_md5_jenkins(PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE, FLOODGATE_REMOTE_LOCATION):
+            print("ERROR!: Floodgate failed file verification. This can indicate numerous things, but the most common is an interupped download.")
+            print("Give the update a couple more tries. If file verification continues to be problematic, you can update plugins without file verification by running `gssm update plugins --skip-hash`")
+            print("Be aware that this will disable file verification, meaning you may be running corrupted and incomplete files.\n")
+            input("Press enter to return to the main menu...")
+            return
+
     # log time of completion
     currenttime = datetime.datetime.now().strftime("%b %-d, %Y at %-I:%M:%S %p")
     print("Finished updating plugins! (" + currenttime + ")\n")
@@ -257,14 +333,20 @@ def check_launch_arguments():
                 if (len(args) >= 2):
                     match args[1]:
                         case "server":
-                            update_server(False)
+                            # TODO: implement "--skip-hash" when BuildTools provides a remote hash to check
+                            # skip_hash = "--skip-hash" in args
+                            update_server(False, False, False) # update_server(False, False, not skip_hash)
                         case "plugins":
-                            update_plugins(False)
+                            skip_hash = "--skip-hash" in args
+                            update_plugins(False, not skip_hash)
+                        case "--skip-hash":
+                            update_server(False, False, False)
+                            update_plugins(False, False)
                         case _:
                             sys.exit("ERROR!: \"" + args[1] + "\" is not a valid update option. Use \"gssm help\" to view how to use the update command properly.")
                 else:
-                    update_server(False, False)
-                    update_plugins(False)
+                    update_server(False, False, False) # set to (False, False, True) when file verification for server works
+                    update_plugins(False, True)
 
                 sys.exit()
 
@@ -310,11 +392,11 @@ while main_menu_loop_running:
 
         # update server
         case "s":
-            update_server()
+            update_server(True, True, False) # do not verify hash; source does not currently provide fingerprint
             
         # update plugins
         case "p":
-            update_plugins()
+            update_plugins(True, True)
             
         # show last update times
         case "t":
