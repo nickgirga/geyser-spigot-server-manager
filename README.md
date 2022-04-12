@@ -1,6 +1,8 @@
 # Geyser-Spigot Server Manager
 The Geyser-Spigot Server Manager (or GSSM) is a tool that makes setting up a cross-platform Java/Bedrock [Minecraft](https://www.minecraft.net/en-us) server with [Spigot](https://www.spigotmc.org/), [Geyser](https://geysermc.org/), and [Floodgate](https://github.com/GeyserMC/Floodgate/) super easy.
 
+**Make sure you read about the current [issues](https://gitlab.com/nickgirga/gssm/-/issues) before using GSSM!**
+
 # Dependencies
  - Linux (GSSM was developed to be used on Linux servers, but may be adaptable to other platforms)
  - Java [[java.com](https://www.java.com/en/download/)/[oracle.com](https://www.oracle.com/java/technologies/downloads/)]
