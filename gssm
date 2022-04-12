@@ -7,18 +7,11 @@
 # This program helps maintain a Minecraft Spigot server that utilizes Geyser
 
 # TODO:
-# ESSENTIAL FOR MOVING FORWARD:
-#   - read/write to/from files properly, so there doesn't need to be an entire file for each piece of data that needs storing
-#     - we need to be able to store the name of the spigot executable that we want GSSM to call, but the current system isn't an elegant solution
-#     - we want to construct real logs for the behavior of GSSM and potentially information we get from utilities like Spigot, Geyser, or Floodgate
-#     - we want to be able to create systems that track files and their states (like the plugin, world, and player managers), but this wouldn't work well with our current storage solution
-#
-# NEEDED, BUT LATER:
-#   - implement plugin manager
-#   - implement world manager
-#   - implement player manager
-#   - implement hash verification for updates to ensure files have not been corrupted or tampered with
-#   - implement launch option (for both the CLI menu and the direct commands) to use a custom Java version; e.g. "--java /usr/lib/jvm/java-11-openjdk/bin/java"
+# - download files to temporary directory, so they don't overwrite the originals until they are verified
+# - implement plugin manager
+# - implement world manager
+# - implement player manager
+# - implement launch option (for both the CLI menu and the direct commands) to use a custom Java version; e.g. "--java /usr/lib/jvm/java-11-openjdk/bin/java"
 
 """ imports """
 import datetime, os, subprocess, sys, urllib
@@ -26,10 +19,15 @@ import datetime, os, subprocess, sys, urllib
 """ constants """
 MD5_LENGTH = 32
 
-GSSM_DIRECTORY = "./.gssm" # remove trailing forward/back slashes
+GSSM_DIRECTORY = os.path.expanduser("~") + "/.local/share/gssm" # remove trailing forward/back slashes
 
-LAST_SERVER_UPDATE_TIME_FILE = GSSM_DIRECTORY + "/last_server_update_time"
-LAST_PLUGIN_UPDATE_TIME_FILE = GSSM_DIRECTORY + "/last_plugin_update_time"
+# log files
+UPDATE_SERVER_LOG_FILE = GSSM_DIRECTORY + "/logs/update_server.log"
+UPDATE_PLUGINS_LOG_FILE = GSSM_DIRECTORY + "/logs/update_plugins.log"
+RUN_SERVER_LOG_FILE = GSSM_DIRECTORY + "/logs/run_server.log"
+
+# BuildTools.jar log file
+BUILD_TOOLS_LOG_FILE = os.getcwd() + "/BuildTools.log.txt"
 
 # added to the end of a Jenkins URL to see the web page with the md5 on it
 JENKINS_FINGERPRINT_SUFFIX = "/*fingerprint*/"
@@ -52,6 +50,8 @@ FLOODGATE_FILE = "floodgate-spigot.jar"
 SPIGOT_EXE_PREFIX = "spigot-"
 # what the spigot server executable ends with
 SPIGOT_EXE_SUFFIX = ".jar"
+
+DATETIME_FORMAT = "%b %-d, %Y at %-I:%M:%S %p"
 
 """ env vars """
 VERBOSE = False
@@ -77,18 +77,35 @@ def get_current_spigot_exe() -> str:
 # returns true if directory existed before the function was called; creates missing directory if specified
 def directory_exists(path: str, create_if_missing = True) -> bool:
     # check if directory exists
-    if (not os.path.isdir(path)):
-        if (VERBOSE):
-            print("WARN: The directory could not be found (" + path + "). Creating a new one...")
-        if (create_if_missing):
-            os.mkdir(path)
+    if not os.path.isdir(path):
+        if VERBOSE:
+            print("WARN: The directory could not be found (" + path + ").")
+        if create_if_missing:
+            if VERBOSE:
+                print("Creating a new one...")
+            os.makedirs(path)
+        return False
+    return True
+
+# returns true if file existed before the function was called; creates missing file if specified
+def file_exists(path: str, create_if_missing = True) -> bool:
+    # check if file exists
+    if not os.path.isfile(path):
+        if VERBOSE:
+            print("WARN: The file could not be found (" + path + ").")
+        if create_if_missing:
+            if VERBOSE:
+                print("Creating a new one...")
+            directory_exists(os.path.dirname(path))
+            file = open(path, "w")
+            file.close()
         return False
     return True
 
 # returns md5 for a Jenkins artifact from its url
 def get_md5_jenkins(artifact_url: str) -> str:
     print("Retrieving fingerprint for file verification...")
-    subprocess.run(["curl", "-o", JENKINS_FINGERPRINT_FILE, artifact_url + JENKINS_FINGERPRINT_SUFFIX])
+    subprocess.run(["wget", "--output-document", JENKINS_FINGERPRINT_FILE, artifact_url + JENKINS_FINGERPRINT_SUFFIX])
     if not os.path.isfile(JENKINS_FINGERPRINT_FILE):
         print("ERROR!: The fingerprint from Jenkins could not be retrieved! (" + artifact_url + JENKINS_FINGERPRINT_SUFFIX + ")")
         return ""
@@ -98,7 +115,7 @@ def get_md5_jenkins(artifact_url: str) -> str:
     print("Parsing MD5 hash...")
     with open(JENKINS_FINGERPRINT_FILE, "r") as fingerprint:
         for line in fingerprint.readlines():
-            if ("md5" in line):
+            if "md5" in line:
                 _md5 = line[len("      </h1><div class=\"md5sum\">MD5: "):-len("</div><div>") - 1]
                 print("Found MD5 hash (" + _md5 + ")!\n")
                 md5 = _md5
@@ -137,7 +154,7 @@ def run_server(check_for_updates, restart_server_prompt):
     while server_running:
         os.system("clear")
         
-        if (check_for_updates):
+        if check_for_updates:
             # check for last server update (prompt for download if > 30 days)
             pass
             # TODO [low priority]: implement (use update_server())
@@ -150,32 +167,36 @@ def run_server(check_for_updates, restart_server_prompt):
         # TODO [low priority]: implement (use "[M] - Manage Server" function)
 
         os.system("clear")
-        print("Starting Spigot server...\n")
+
         # log start time
-        # TODO: implement
+        currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+        print_and_log("[START] Starting Spigot server... (" + currenttime + ")\n", RUN_SERVER_LOG_FILE)
 
         # get the current server executable
         current_spigot_exe = get_current_spigot_exe()
         if current_spigot_exe == "":
-            print("ERROR!: Could not start server because no Spigot server executable could be found.\n")
+            print_and_log("ERROR!: Could not start server because no Spigot server executable could be found.\n", RUN_SERVER_LOG_FILE)
+            currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+            print_and_log("[FAIL] Failed to start server! (" + currenttime + ")\n", RUN_SERVER_LOG_FILE)
             input("Press enter to return to the main menu...")
             server_running = False
             break
 
         # run the server executable
+        currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
         # TODO: add options for things like "--nogui"
-        print("Executing \"java -jar " + current_spigot_exe + " --nogui\"...")
+        print_and_log("Executing \"java -jar " + current_spigot_exe + " --nogui\"... (" + currenttime + ")", RUN_SERVER_LOG_FILE)
         subprocess.run(["java", "-jar", current_spigot_exe, "--nogui"])
-        print("\"" + current_spigot_exe + "\" has exited.\n")
+        currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+        print_and_log("\"" + current_spigot_exe + "\" has exited. " + currenttime + "\n", RUN_SERVER_LOG_FILE)
 
         # log stop time
-        # TODO: implement
+        print_and_log("\n[STOP] The server has stopped.\n", RUN_SERVER_LOG_FILE)
 
-        if (restart_server_prompt):
+        if restart_server_prompt:
             # prompt user if they would like to restart the server
-            print()
-            response = input("The server has stopped. Would you like to restart it? [y/N] > ")
-            if (not response.lower() == "y"):
+            response = input("Would you like to restart it? [y/N] > ")
+            if not response.lower() == "y":
                 server_running = False
                 break
         else:
@@ -184,83 +205,109 @@ def run_server(check_for_updates, restart_server_prompt):
 
 # installs and updates the base server files
 def update_server(clear_on_start: bool, pause_when_done: bool, verify_hash: bool):
-    if (clear_on_start):
+    if clear_on_start:
         os.system("clear")
-    print("Updating server...\n")
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    file_exists(UPDATE_SERVER_LOG_FILE)
+    print_and_log("[START] Starting server update... (" + currenttime + ")\n", UPDATE_SERVER_LOG_FILE)
     
     # download build tools
-    print("Downloading \"" + BUILD_TOOLS_FILE + "\"...")
-    print("Source: \"" + BUILD_TOOLS_REMOTE_LOCATION + "\"")
-    subprocess.run(["curl", "-o", BUILD_TOOLS_FILE, BUILD_TOOLS_REMOTE_LOCATION])
-    print("Finished downloading \"" + BUILD_TOOLS_FILE + "\" from remote location!\n")
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("Downloading \"" + BUILD_TOOLS_FILE + "\"... (" + currenttime + ")", UPDATE_SERVER_LOG_FILE)
+    print_and_log("Source: \"" + BUILD_TOOLS_REMOTE_LOCATION + "\"", UPDATE_SERVER_LOG_FILE)
+    subprocess.run(["wget", "--output-document", BUILD_TOOLS_FILE, BUILD_TOOLS_REMOTE_LOCATION])
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("Finished downloading \"" + BUILD_TOOLS_FILE + "\" from remote location! (" + currenttime + ")\n", UPDATE_SERVER_LOG_FILE)
 
     # verify hash of build tools
     if verify_hash:
+        currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+        print_and_log("Verifying the integrity of the downloaded file... (" + currenttime + ")", UPDATE_SERVER_LOG_FILE)
         if not check_md5_jenkins(BUILD_TOOLS_FILE, BUILD_TOOLS_REMOTE_LOCATION):
-            print("ERROR!: BuildTools failed file verification. This can indicate numerous things, but the most common is an interupped download.")
-            print("Give the update a couple more tries. If file verification continues to be problematic, you can update the server without file verification by running `gssm update server --skip-hash`.")
-            print("Be aware that this will disable file verification, meaning you may be running corrupted and incomplete files.\n")
+            print_and_log("ERROR!: BuildTools failed file verification. This can indicate numerous things, but the most common is an interrupted download.", UPDATE_SERVER_LOG_FILE)
+            print_and_log("Give the update a couple more tries. If file verification continues to be problematic, you can update the server without file verification by running `gssm update server --skip-hash`.", UPDATE_SERVER_LOG_FILE)
+            print_and_log("Be aware that this will disable file verification, meaning you may be running corrupted and incomplete files.\n", UPDATE_SERVER_LOG_FILE)
+            currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+            print_and_log("[FAIL] Failed updating server! (" + currenttime + ")\n", UPDATE_SERVER_LOG_FILE)
             input("Press enter to return to the main menu...")
+        currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+        print_and_log("File verification passed! (" + currenttime + ")\n", UPDATE_SERVER_LOG_FILE)
         
     # run/build
     # TODO: add the ability to specify the version of Minecraft the server will be compatible with (e.g. adds "--rev 1.18.2" to the end of the command)
-    print("Executing \"java -jar ./BuildTools.jar\"...")
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("Executing \"java -jar ./BuildTools.jar\"... (" + currenttime + ")", UPDATE_SERVER_LOG_FILE)
+    print_and_log("See \"" + BUILD_TOOLS_LOG_FILE + "\" for log information about the \"BuildTools.jar\" subprocess.", UPDATE_SERVER_LOG_FILE)
     subprocess.run(["java", "-jar", BUILD_TOOLS_FILE])
-    print("\"" + BUILD_TOOLS_FILE + "\" has exited.\n")
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("\"" + BUILD_TOOLS_FILE + "\" has exited. (" + currenttime + ")\n", UPDATE_SERVER_LOG_FILE)
     
     # log time of completion
-    currenttime = datetime.datetime.now().strftime("%b %-d, %Y at %-I:%M:%S %p")
-    print("Finished updating server! (" + currenttime + ")\n")
-    with open(LAST_SERVER_UPDATE_TIME_FILE, "w") as file:
-        file.write(currenttime)
-        
-    if (pause_when_done):
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("[FINISH] Finished updating server! (" + currenttime + ")\n", UPDATE_SERVER_LOG_FILE)
+
+    if pause_when_done:
         input("Press enter to return to the main menu...")
     
 # installs and updates core plugins such as Geyser
 # I intend to eventually make a plugin manager that will allow you to add custom sources, so this function can update other plugins as well
 def update_plugins(pause_when_done: bool, verify_hash: bool):
     os.system("clear")
-    print("Updating plugins...\n")
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("[START] Starting plugins update... (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
         
     # check if plugin directory exists; if not, create it
     directory_exists(PLUGIN_DIRECTORY)
 
     # download geyser
-    print("Downloading \"" + PLUGIN_DIRECTORY + "/" + GEYSER_FILE + "\"...")
-    print("Source: \"" + GEYSER_REMOTE_LOCATION + "\"")
-    subprocess.run(["curl", "-o", PLUGIN_DIRECTORY + "/" + GEYSER_FILE, GEYSER_REMOTE_LOCATION])
-    print("Finished downloading \"" + PLUGIN_DIRECTORY + "/" + GEYSER_FILE + "\" from remote location!\n")
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("Downloading \"" + PLUGIN_DIRECTORY + "/" + GEYSER_FILE + "\"... (" + currenttime + ")", UPDATE_PLUGINS_LOG_FILE)
+    print_and_log("Source: \"" + GEYSER_REMOTE_LOCATION + "\"", UPDATE_PLUGINS_LOG_FILE)
+    subprocess.run(["wget", "--output-document", PLUGIN_DIRECTORY + "/" + GEYSER_FILE, GEYSER_REMOTE_LOCATION])
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("Finished downloading \"" + PLUGIN_DIRECTORY + "/" + GEYSER_FILE + "\" from remote location! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
 
     # verify hash of geyser
     if verify_hash:
+        currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+        print_and_log("Verifying the integrity of \"" + PLUGIN_DIRECTORY + "/" + GEYSER_FILE + "\"... (" + currenttime + ")", UPDATE_PLUGINS_LOG_FILE)
         if not check_md5_jenkins(PLUGIN_DIRECTORY + "/" + GEYSER_FILE, GEYSER_REMOTE_LOCATION):
-            print("ERROR!: Geyser failed file verification. This can indicate numerous things, but the most common is an interupped download.")
-            print("Give the update a couple more tries. If file verification continues to be problematic, you can update plugins without file verification by running `gssm update plugins --skip-hash`.")
-            print("Be aware that this will disable file verification, meaning you may be running corrupted and incomplete files.\n")
+            print_and_log("ERROR!: Geyser failed file verification. This can indicate numerous things, but the most common is an interrupted download.", UPDATE_PLUGINS_LOG_FILE)
+            print_and_log("Give the update a couple more tries. If file verification continues to be problematic, you can update plugins without file verification by running `gssm update plugins --skip-hash`.", UPDATE_PLUGINS_LOG_FILE)
+            print_and_log("Be aware that this will disable file verification, meaning you may be running corrupted and incomplete files.\n", UPDATE_PLUGINS_LOG_FILE)
+            currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+            print_and_log("[FAIL] Failed updating plugins! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
             input("Press enter to return to the main menu...")
             return
+        currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+        print_and_log("File verification passed! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
 
     # download floodgate
-    print("Downloading \"" + PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE + "\"...")
-    print("Source: \"" + FLOODGATE_REMOTE_LOCATION + "\"")
-    subprocess.run(["curl", "-o", PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE, FLOODGATE_REMOTE_LOCATION])
-    print("Finished downloading \"" + PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE + "\" from remote location!\n")
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("Downloading \"" + PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE + "\"... (" + currenttime + ")", UPDATE_PLUGINS_LOG_FILE)
+    print_and_log("Source: \"" + FLOODGATE_REMOTE_LOCATION + "\"", UPDATE_PLUGINS_LOG_FILE)
+    subprocess.run(["wget", "--output-document", PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE, FLOODGATE_REMOTE_LOCATION])
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("Finished downloading \"" + PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE + "\" from remote location! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
     
     # verify hash of floodgate
     if verify_hash:
+        currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+        print_and_log("Verifying the integrity of \"" + PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE + "\"... (" + currenttime + ")", UPDATE_PLUGINS_LOG_FILE)
         if not check_md5_jenkins(PLUGIN_DIRECTORY + "/" + FLOODGATE_FILE, FLOODGATE_REMOTE_LOCATION):
-            print("ERROR!: Floodgate failed file verification. This can indicate numerous things, but the most common is an interupped download.")
-            print("Give the update a couple more tries. If file verification continues to be problematic, you can update plugins without file verification by running `gssm update plugins --skip-hash`")
-            print("Be aware that this will disable file verification, meaning you may be running corrupted and incomplete files.\n")
+            print_and_log("ERROR!: Floodgate failed file verification. This can indicate numerous things, but the most common is an interrupted download.", UPDATE_PLUGINS_LOG_FILE)
+            print_and_log("Give the update a couple more tries. If file verification continues to be problematic, you can update plugins without file verification by running `gssm update plugins --skip-hash`", UPDATE_PLUGINS_LOG_FILE)
+            print_and_log("Be aware that this will disable file verification, meaning you may be running corrupted and incomplete files.\n", UPDATE_PLUGINS_LOG_FILE)
+            currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+            print_and_log("[FAIL] Failed updating plugins! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
             input("Press enter to return to the main menu...")
             return
+        currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+        print_and_log("File verification passed! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
 
     # log time of completion
-    currenttime = datetime.datetime.now().strftime("%b %-d, %Y at %-I:%M:%S %p")
-    print("Finished updating plugins! (" + currenttime + ")\n")
-    with open(LAST_PLUGIN_UPDATE_TIME_FILE, "w") as file:
-        file.write(currenttime)
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("[FINISH] Finished updating plugins! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
 
     if (pause_when_done):
         input("Press enter to return to the main menu...")
@@ -269,45 +316,55 @@ def update_plugins(pause_when_done: bool, verify_hash: bool):
 def show_last_update_times(pause_when_done=True):
     os.system("clear")
     
+    last_server_update_time = "No Log Found"
+
     # fetch last server update time
-    if (os.path.isfile(LAST_SERVER_UPDATE_TIME_FILE)):
-        try:
-            output = subprocess.run(["cat", LAST_SERVER_UPDATE_TIME_FILE], capture_output=True)
-            last_server_update_time = output.stdout.decode("UTF-8")
-        except Exception as e:
-            print("ERROR!: Could not fetch the last time that the server was updated! (" + str(e) + ")")
-            last_server_update_time = "FAILED TO CHECK!"
+    if os.path.isfile(UPDATE_SERVER_LOG_FILE):
+        with open(UPDATE_SERVER_LOG_FILE, "r") as file:
+            lines = file.readlines()
+            reversed_lines = [ele for ele in reversed(lines)]
+            for line in reversed_lines:
+                if "[FAIL]" in line:
+                    last_server_update_time = line[line.index("(") + 1:-len(")") - 1] + " [UPDATE FAILED!]"
+                    break
+                if "[FINISH]" in line:
+                    last_server_update_time = line[line.index("(") + 1:-len(")") - 1]
+                    break
     else:
         if (VERBOSE):
             print("WARN: There is no logged time for the last update to the server")
-        last_server_update_time = "No History"
+
+    last_plugin_update_time = "No Log Found"
 
     # fetch last plugin update time
-    if (os.path.isfile(LAST_PLUGIN_UPDATE_TIME_FILE)):
-        try:
-            output = subprocess.run(["cat", LAST_PLUGIN_UPDATE_TIME_FILE], capture_output=True)
-            last_plugin_update_time = output.stdout.decode("UTF-8")
-        except Exception as e:
-            print("ERROR!: Could not fetch the last time that the plugins were updated! (" + str(e) + ")")
-            last_plugin_update_time = "FAILED TO CHECK!"
+    if os.path.isfile(UPDATE_PLUGINS_LOG_FILE):
+        with open(UPDATE_PLUGINS_LOG_FILE, "r") as file:
+            lines = file.readlines()
+            reversed_lines = [ele for ele in reversed(lines)]
+            for line in reversed_lines:
+                if "[FAIL]" in line:
+                    last_plugin_update_time = line[line.index("(") + 1:-len(")") - 1] + " [UPDATE FAILED!]"
+                    break
+                if "[FINISH]" in line:
+                    last_plugin_update_time = line[line.index("(") + 1:-len(")") - 1]
+                    break
     else:
-        if (VERBOSE):
+        if VERBOSE:
             print("WARN: There is no logged time for the last update to the plugins")
-        last_plugin_update_time = "No History"
             
     # print
     print("Last Server Update Time: \'" + last_server_update_time + "\'")
     print("Last Plugin Update Time: \'" + last_plugin_update_time + "\'\n")
             
-    if (pause_when_done):
+    if pause_when_done:
         input("Press enter to return to the main menu...")
 
 # check launch arguments
 def check_launch_arguments():
     args = sys.argv[1:]
 
-    if (len(args) > 0):
-        if ("-v" in args or "--verbose" in args):
+    if len(args) > 0:
+        if "-v" in args or "--verbose" in args:
             VERBOSE = True
 
         if ((args[0] == "-v" or args[0] == "--verbose") and len(args) == 1):
@@ -324,7 +381,7 @@ def check_launch_arguments():
                 check_for_updates = True
                 restart_server_prompt = True
 
-                if (len(args) >= 2):
+                if len(args) >= 2:
                     check_for_updates = (not "--ignore-updates" in args)
                     restart_server_prompt = (not "--exit-on-stop" in args)
 
@@ -334,7 +391,7 @@ def check_launch_arguments():
 
             # update server
             case "update":
-                if (len(args) >= 2):
+                if len(args) >= 2:
                     match args[1]:
                         case "server":
                             # TODO: implement "--skip-hash" when BuildTools provides a remote hash to check
@@ -362,6 +419,11 @@ def check_launch_arguments():
             # default or failure to match input
             case _:
                 sys.exit("ERROR!: Invalid launch arguments given (" + str(args)[1:-1] + "). Use \"gssm help\" to view available launch arguments.")
+
+# prints message to terminal and logs it in the specified log
+def print_and_log(message: str, log: str, new_line_in_file = True):
+    with open(log, "a") as file:
+        file.write(message + "\n" if new_line_in_file else message)
 
 """ initialize """
 # check launch arguments
