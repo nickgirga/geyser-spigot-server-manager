@@ -151,6 +151,7 @@ def check_md5_jenkins(local_file: str, artifact_url: str) -> bool:
 # starts the server
 def run_server(check_for_updates, restart_server_prompt):
     server_running = True
+    file_exists(RUN_SERVER_LOG_FILE)
     while server_running:
         os.system("clear")
         
@@ -254,6 +255,7 @@ def update_server(clear_on_start: bool, pause_when_done: bool, verify_hash: bool
 # I intend to eventually make a plugin manager that will allow you to add custom sources, so this function can update other plugins as well
 def update_plugins(pause_when_done: bool, verify_hash: bool):
     os.system("clear")
+    file_exists(UPDATE_PLUGINS_LOG_FILE)
     currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
     print_and_log("[START] Starting plugins update... (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
         
