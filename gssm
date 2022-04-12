@@ -188,10 +188,11 @@ def run_server(check_for_updates, restart_server_prompt):
         print_and_log("Executing \"java -jar " + current_spigot_exe + " --nogui\"... (" + currenttime + ")", RUN_SERVER_LOG_FILE)
         subprocess.run(["java", "-jar", current_spigot_exe, "--nogui"])
         currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
-        print_and_log("\"" + current_spigot_exe + "\" has exited. " + currenttime + "\n", RUN_SERVER_LOG_FILE)
+        print_and_log("\"" + current_spigot_exe + "\" has exited. (" + currenttime + ")\n", RUN_SERVER_LOG_FILE)
 
         # log stop time
-        print_and_log("\n[STOP] The server has stopped.\n", RUN_SERVER_LOG_FILE)
+        currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+        print_and_log("[STOP] The server has stopped! (" + currenttime + ")\n", RUN_SERVER_LOG_FILE)
 
         if restart_server_prompt:
             # prompt user if they would like to restart the server
