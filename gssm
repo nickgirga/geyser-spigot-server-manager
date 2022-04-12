@@ -422,6 +422,7 @@ def check_launch_arguments():
 
 # prints message to terminal and logs it in the specified log
 def print_and_log(message: str, log: str, new_line_in_file = True):
+    print(message)
     with open(log, "a") as file:
         file.write(message + "\n" if new_line_in_file else message)
 
