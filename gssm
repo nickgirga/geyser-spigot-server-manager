@@ -17,6 +17,8 @@
 import datetime, os, subprocess, sys, urllib
 
 """ constants """
+APP_VERSION = "1.0"
+
 MD5_LENGTH = 32
 
 GSSM_DIRECTORY = os.path.expanduser("~") + "/.local/share/gssm" # remove trailing forward/back slashes
@@ -376,7 +378,15 @@ def check_launch_arguments():
         match args[0]:
             # show how to pass commands directly into GSSM
             case "help":
-                print("no.")
+                print("GSSM " + APP_VERSION + " Help:")
+                print("`gssm` - Starts the menu interface. ")
+                print("`gssm help` - Shows how to use the direct command interface. ")
+                print("`gssm update [type]` - Updates files. Type can be `server`, `plugins` or blank. Use `--skip-hash` to skip file verification. ")
+                print("`gssm run` - Starts the server. Use `--exit-on-stop` to stop the restart prompt. ")
+                print("`gssm history` - Shows the last times the server and the plugins were updated. ")
+                print("`gssm version` - Shows the current version of GSSM being used. ")
+                print()
+                print("You can add `-v` or `--verbose` to the end of almost anything to get a bit more information. ")
                 sys.exit()
 
             # starts the server
@@ -419,6 +429,11 @@ def check_launch_arguments():
                 show_last_update_times(False)
                 sys.exit()
 
+            # prints APP_VERSION
+            case "version" | "--version":
+                print("Geyser-Spigot Server Manager v" + APP_VERSION + " by Nicholas Girga")
+                sys.exit()
+
             # default or failure to match input
             case _:
                 sys.exit("ERROR!: Invalid launch arguments given (" + str(args)[1:-1] + "). Use \"gssm help\" to view available launch arguments.")
@@ -440,7 +455,7 @@ directory_exists(GSSM_DIRECTORY)
 while main_menu_loop_running:
     os.system("clear")
     # print header
-    print("Geyser-Spigot Server Manager (GSSM) by Nicholas Girga\nVersion 1.0\n\nRELEASED UNDER THE MIT LICENSE WITH ABSOLUTELY NO WARRANTY\n")
+    print("Geyser-Spigot Server Manager (GSSM) by Nicholas Girga\nVersion " + APP_VERSION + "\n\nRELEASED UNDER THE MIT LICENSE WITH ABSOLUTELY NO WARRANTY\n")
         
     # print options
     print("What would you like to do?")
