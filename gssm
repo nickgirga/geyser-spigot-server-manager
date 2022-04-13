@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3.10
 # name-grabber
 # Version 3.3
 # Nicholas Girga
@@ -8,10 +8,11 @@
 
 # TODO:
 # - download files to temporary directory, so they don't overwrite the originals until they are verified
-# - implement plugin manager
 # - implement world manager
 # - implement player manager
 # - implement launch option (for both the CLI menu and the direct commands) to use a custom Java version; e.g. "--java /usr/lib/jvm/java-11-openjdk/bin/java"
+# - implement GitLab plugin downloader
+# - implement self-updater
 
 """ imports """
 import datetime, os, subprocess, sys, urllib
@@ -21,7 +22,12 @@ APP_VERSION = "1.0"
 
 MD5_LENGTH = 32
 
+# directories
 GSSM_DIRECTORY = os.path.expanduser("~") + "/.local/share/gssm" # remove trailing forward/back slashes
+GSSM_CONFIG_DIRECTORY = os.path.expanduser("~") + "/.config/gssm" # remove trailing forward/back slashes
+
+# config files
+PLUGIN_REPOS_FILE = GSSM_CONFIG_DIRECTORY + "/plugin_repos"
 
 # log files
 UPDATE_SERVER_LOG_FILE = GSSM_DIRECTORY + "/logs/update_server.log"
@@ -47,6 +53,9 @@ GEYSER_FILE = "Geyser-Spigot.jar"
 # this plugin is responsible for allowing Bedrock players to play on an "online" Java server (requires Geyser); see here for more info: https://github.com/GeyserMC/Floodgate
 FLOODGATE_REMOTE_LOCATION = "https://ci.opencollab.dev/job/GeyserMC/job/Floodgate/job/master/lastSuccessfulBuild/artifact/spigot/target/floodgate-spigot.jar"
 FLOODGATE_FILE = "floodgate-spigot.jar"
+
+# domains
+GITHUB_DOMAIN = "https://github.com"
 
 # what the spigot server executable starts with
 SPIGOT_EXE_PREFIX = "spigot-"
@@ -150,6 +159,46 @@ def check_md5_jenkins(local_file: str, artifact_url: str) -> bool:
     print("Hashes match!\n")
     return True
 
+# accepts the project_overview_url and returns the url of the latest download of it (for github.com)
+def get_latest_github_plugin(project_overview_url: str) -> str:
+    GITHUB_RELEASES_FILE = ".github_releases.html"
+
+    # construct the url for Github releases
+    github_releases_url = project_overview_url + "/releases"
+
+    # download the Github releases page
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("Fetching plugin releases... (" + currenttime + ")", UPDATE_PLUGINS_LOG_FILE)
+    subprocess.run(["wget", "--output-document", GITHUB_RELEASES_FILE, github_releases_url])
+    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+    print_and_log("Finished fetching releases! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
+
+    # parse the latest plugin url from the downloaded Github releases page
+    url = ""
+    print_and_log("Parsing latest version...", UPDATE_PLUGINS_LOG_FILE)
+    with open(GITHUB_RELEASES_FILE, "r") as file:
+        for line in file.readlines():
+            # find the first line that contains "href" and ".jar". this should be our latest download, being closest to the top of the screen
+            if "href" in line and ".jar" in line:
+                # find the opening quotation mark for the url
+                lower_index = line.find("href=\"") + len("href=\"") if not line.find("href=\"") == -1 else -1
+                # find the closing quotation mark for the url
+                upper_index = -1
+                for i in range(lower_index, len(line)):
+                    if line[i] == '\"':
+                        upper_index = i
+                        break
+                if lower_index == -1 or upper_index == -1:
+                    # if no opening or closing quotation mark is found, this is not our download url, so skip to next line
+                    continue
+                # if both an opening and a closing quotation mark have been found, set the url to be returned and break out
+                url = GITHUB_DOMAIN + line[lower_index:upper_index]
+                break
+    if url == "":
+        print_and_log("ERROR!: No download link found in plugin version history!", UPDATE_PLUGINS_LOG_FILE)
+    os.remove(GITHUB_RELEASES_FILE)
+    return url
+
 # starts the server
 def run_server(check_for_updates, restart_server_prompt):
     server_running = True
@@ -181,7 +230,7 @@ def run_server(check_for_updates, restart_server_prompt):
             print_and_log("ERROR!: Could not start server because no Spigot server executable could be found.\n", RUN_SERVER_LOG_FILE)
             currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
             print_and_log("[FAIL] Failed to start server! (" + currenttime + ")\n", RUN_SERVER_LOG_FILE)
-            input("Press enter to return to the main menu...")
+            input("Press enter to continue...")
             server_running = False
             break
 
@@ -206,6 +255,342 @@ def run_server(check_for_updates, restart_server_prompt):
         else:
             server_running = False
             break
+
+# essentially a bridge to the server management tools (manage_plugins, manage_worlds, manage_users, etc)
+def manage_server():
+    manage_server_running = True
+    while manage_server_running:
+        os.system("clear")
+        # print header
+        print("Geyser-Spigot Server Manager (GSSM) by Nicholas Girga\nVersion " + APP_VERSION + "\n\nRELEASED UNDER THE MIT LICENSE WITH ABSOLUTELY NO WARRANTY\n")
+
+        # print options
+        print("Manage Server")
+        print(" [S] - Update Server")
+        print(" [P] - Manage Plugins")
+        print(" [W] - Manage Worlds")
+        print(" [U] - Manage Users")
+        print(" [B] - Back to the Main Menu")
+
+        # ask user for input
+        print()
+        response = input("> ")
+
+        match response.lower():
+            # update server
+            case "s":
+                update_server(True, True, False) # do not verify hash; source does not currently provide fingerprint
+
+            # manage plugins
+            case "p":
+                manage_plugins()
+
+            # manage worlds
+            case "w":
+                manage_worlds()
+
+            # manage users
+            case "u":
+                manage_users()
+
+            # back to the main menu
+            case "b":
+                manage_server_running = False
+                return
+
+            # no match
+            case _:
+                os.system("clear")
+                print("ERROR!: Invalid option.\n\nSimply type the character found in the square brackets next to the desired function. For example, if I wanted to run \"[P] - Manage Plugins\", I would simply enter \"p\" and press the enter key.\n")
+                input("Press enter to continue...")
+
+def print_plugins(old_plugin_list = ["NULL"]) -> []:
+    # create plugin directory if it does not exist
+    directory_exists(PLUGIN_DIRECTORY)
+
+    # print plugin directory location
+    print(os.getcwd() + PLUGIN_DIRECTORY[1:] + ": ")
+
+    if len(old_plugin_list) == 0 or old_plugin_list[0] == "NULL":
+        # create list of files if no old_plugin_list provided
+        file_list = [file for file in os.listdir(PLUGIN_DIRECTORY) if (".jar" in file or ".jar.disabled" in file)]
+        plugin_list = []
+        for file in file_list:
+            if (os.path.isfile(PLUGIN_DIRECTORY + "/" + file)):
+                plugin_list.append(file)
+    else:
+        # use old_plugin_list if provided
+        plugin_list = old_plugin_list
+    
+    # print list of files with numbers
+    file_count = 1
+    for file in plugin_list:
+        print(" [" + str(file_count) + "] - " + file)
+        file_count += 1
+    if len(plugin_list) < 1:
+        print(" [ ] - No files found")
+
+    return plugin_list
+
+# allows user to download new plugins, delete plugins, enable/disable them, and update them
+def manage_plugins():
+    manage_plugins_running = True
+    while manage_plugins_running:
+        os.system("clear")
+        # print header
+        print("Geyser-Spigot Server Manager (GSSM) by Nicholas Girga\nVersion " + APP_VERSION + "\n\nRELEASED UNDER THE MIT LICENSE WITH ABSOLUTELY NO WARRANTY\n")
+    
+        plugin_list = print_plugins()
+        
+        # print options
+        print("\nManage Plugins")
+        print(" [A] - Add Plugin")
+        print(" [D] - Delete Plugin")
+        print(" [U] - Update Plugins")
+        print(" [T] - Toggle Plugin On/Off")
+        print(" [B] - Back to the Manage Server Menu")
+
+        # ask user for input
+        print()
+        response = input("> ")
+
+        match response.lower():
+            # add plugin
+            case "a":
+                add_plugin(plugin_list)
+
+            # delete plugin
+            case "d":
+                delete_plugin(plugin_list)
+
+            # update plugins
+            case "u":
+                update_plugins(True, True)
+
+            # toggle plugin
+            case "t":
+                toggle_plugin(plugin_list)
+
+            # back to the Manage Server menu
+            case "b":
+                manage_plugins_running = False
+                return
+
+            # no match
+            case _:
+                os.system("clear")
+                print("ERROR!: Invalid option.\n\nSimply type the character found in the square brackets next to the desired function. For example, if I wanted to run \"[A] - Add Plugin\", I would simply enter \"a\" and press the enter key.\n")
+                input("Press enter to continue...")
+
+# asks user how they would like to download a plugin
+def add_plugin(plugin_list: []):
+    add_plugin_running = True
+    while add_plugin_running:
+        os.system("clear")
+        # print header
+        print("Geyser-Spigot Server Manager (GSSM) by Nicholas Girga\nVersion " + APP_VERSION + "\n\nRELEASED UNDER THE MIT LICENSE WITH ABSOLUTELY NO WARRANTY\n")
+        
+        print_plugins(plugin_list)
+
+        # print options
+        print("\nAdd Plugin")
+        print(" [D] - Direct Download")
+        print(" [H] - GitHub")
+        #print(" [L] - GitLab") # TODO: implement
+        print(" [B] - Back to the Manage Server Menu")
+
+        # ask user for input
+        print()
+        response = input("> ")
+
+        match response.lower():
+            # direct download
+            case "d":
+                # prompt user
+                os.system("clear")
+                print("Please enter a URL to fetch plugin updates from. ")
+                print("Direct downloads will NOT do any fancy parsing. ")
+                print("GSSM will download ANYTHING at the other end of the link. ")
+                print("Even just HTML pages. ")
+                print("Make sure this URL will not change (although ideally, the file located there will be updated). ")
+                print("Make sure the URL does not need a login of any kind to reach. ")
+                print("Because a user may want to download anything from anywhere, no checks are done on direct downloads. ")
+                print("Make sure you have the correct URL because GSSM will not be able to tell you if you do not.")
+                print("Type `!quit` to return to the Add Plugin menu.\n")
+                url = input("URL> ")
+
+                # stop adding source if user asks to quit
+                if url == "!quit":
+                    continue
+
+                # get plugin name from url
+                os.system("clear")
+                plugin_name = file_from_url(url)
+
+                # write entry in plugin repos
+                file_exists(PLUGIN_REPOS_FILE)
+                with open(PLUGIN_REPOS_FILE, "a") as plugin_repos:
+                    plugin_repos.write("direct " + plugin_name + " {\n")
+                    plugin_repos.write("    url=" + url + "\n")
+                    plugin_repos.write("}\n\n")
+                print("URL has been recorded to \"" + PLUGIN_REPOS_FILE + "\"!\n")
+
+                # download plugin
+                currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+                print("Downloading \"" + plugin_name + "\"... (" + currenttime + ")")
+                print("Source: \"" + url + "\"")
+                subprocess.run(["wget", "--output-document", PLUGIN_DIRECTORY + "/" + plugin_name, url])
+                currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+                print("Finished downloading \"" + plugin_name + "\" from remote location! (" + currenttime + ")\n")
+
+                input("Press enter to continue...")
+                add_plugins_running = False
+                break
+
+            # GitHub
+            # TODO: allow users to set an artifact filter instead of just downloading the first JAR we see
+            case "h":
+                # prompt user
+                os.system("clear")
+                print("Please enter a GitHub URL to fetch plugin updates from. ")
+                print("Example: `URL> https://github.com/EssentialsX/Essentials`")
+                print("Type `!quit` to return to the Add Plugin menu.\n")
+                url = input("URL> ")
+
+                # stop adding source if user asks to quit
+                if url == "!quit":
+                    continue
+
+                os.system("clear")
+                # verify that GitHub URL will work with updater
+                latest_github_plugin = get_latest_github_plugin(url)
+                plugin_name = file_from_url(latest_github_plugin)
+                if not latest_github_plugin == "":
+                    os.system("clear")
+                    print("GitHub URL seems valid. ")
+                    # write entry in plugin repos
+                    file_exists(PLUGIN_REPOS_FILE)
+                    with open(PLUGIN_REPOS_FILE, "a") as plugin_repos:
+                        plugin_repos.write("github " + plugin_name + " {\n")
+                        plugin_repos.write("    url=" + url + "\n")
+                        plugin_repos.write("}\n\n")
+                    print("GitHub URL has been recorded to \"" + PLUGIN_REPOS_FILE + "\"!\n")
+
+                    # download plugin
+                    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+                    print("Downloading \"" + plugin_name + "\"... (" + currenttime + ")")
+                    print("Source: \"" + latest_github_plugin + "\"")
+                    subprocess.run(["wget", "--output-document", PLUGIN_DIRECTORY + "/" + file_from_url(latest_github_plugin), GEYSER_REMOTE_LOCATION])
+                    currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
+                    print("Finished downloading \"" + plugin_name + "\" from remote location! (" + currenttime + ")\n")
+                    
+                    input("Press enter to continue...")
+                    add_plugins_running = False
+                    break
+                else:
+                    # warn user of invalid GitHub url
+                    os.system("clear")
+                    print("ERROR!: An invalid GitHub URL has been entered! (" + url + ")")
+                    print("Make sure your URL only contains the GitHub domain, the user or group the project it hosted on, and the project name. ")
+                    print("For example, the GitHub URL for EssentialsX is \"https://github.com/EssentialsX/Essentials\" and nothing more.\n")
+                    input("Press enter to continue...")
+                    add_plugins_running = False
+                    break
+
+            # back to the Manage Plugins menu
+            case "b":
+                add_plugins_running = False
+                break
+
+            # no match
+            case _:
+                os.system("clear")
+                print("ERROR!: Invalid option.\n\nSimply type the character found in the square brackets next to the desired source type. \nFor example, if I wanted to add a \"[H] - GitHub\" source, I would simply enter \"h\" and press the enter key.\n")
+                input("Press enter to continue...")
+
+# asks user which plugin they would like to delete
+def delete_plugin(plugin_list: []):
+    delete_plugin_running = True
+    while delete_plugin_running:
+        os.system("clear")
+        # print header
+        print("Geyser-Spigot Server Manager (GSSM) by Nicholas Girga\nVersion " + APP_VERSION + "\n\nRELEASED UNDER THE MIT LICENSE WITH ABSOLUTELY NO WARRANTY\n")
+            
+        print_plugins(plugin_list)
+
+        # print prompt
+        print("\nWhich plugin would you like to delete?")
+        print("Type `!quit` to return to the Manage Plugins menu.\n")
+        plugin_index_str = input("PLUGIN_INDEX> ")
+        plugin_index_int = -1
+
+        # return to Manage Plugins menu if player asks to quit
+        if plugin_index_str == "!quit":
+            return
+
+        # ensure entered index is a number
+        try:
+            plugin_index_int = int(plugin_index_str)
+        except Exception as e:
+            os.system("clear")
+            print("ERROR!: Plugin index \"" + plugin_index_str + "\" is not a valid index (" + str(e) + ").")
+            print("Simply type the number found in the square brackets next to the desired plugin. ")
+            print("For example, if I wanted to delete \"[5] - Geyser-Spigot.jar\", I would simply enter \"5\" and press the enter key.\n")
+            input("Press enter to continue...")
+            delete_plugin_running = False
+            break
+
+        # ensure entered index could be parsed properly
+        if plugin_index_int < 1:
+            os.system("clear")
+            print("ERROR!: Plugin index \"" + plugin_index_str + "\" is not a valid index. ")
+            print("Simply type the number found in the square brackets next to the desired plugin. ")
+            print("For example, if I wanted to delete \"[5] - Geyser-Spigot.jar\", I would simply enter \"5\" and press the enter key.\n")
+            input("Press enter to continue...")
+            delete_plugin_running = False
+            break
+
+        # remove file (if within index bounds)
+        if not plugin_index_int >= len(plugin_list) + 1:
+            file_name = PLUGIN_DIRECTORY + "/" + plugin_list[plugin_index_int - 1]
+            try:
+                os.remove(file_name)
+                os.system("clear")
+                print("Deleted \"" + file_name + "\"!")
+                print("Removed source from \"" + PLUGIN_REPOS_FILE + "\"!\n")
+                input("Press enter to continue...")
+                delete_plugin_running = False
+                break
+
+            except Exception as e:
+                os.system("clear")
+                print("ERROR!: Could not remove file at \"" + file_name + "\"!\n")
+                input("Press enter to continue...")
+                delete_plugin_running = False
+                break
+        else:
+            os.system("clear")
+            print("ERROR!: The entered index (" + str(plugin_index_int) + ") is larger than the quantity of plugins (" + str(len(plugin_list)) + ")!\n")
+            input("Press enter to continue...")
+            delete_plugin_running = False
+            break
+
+# asks user which plugin they would like to toggle on/off
+def toggle_plugin(plugin_list: []):
+    os.system("clear")
+    # print header
+    print("Geyser-Spigot Server Manager (GSSM) by Nicholas Girga\nVersion " + APP_VERSION + "\n\nRELEASED UNDER THE MIT LICENSE WITH ABSOLUTELY NO WARRANTY\n")
+    
+
+    print_plugins(plugin_list)
+
+# allows user to view, rename, and delete worlds
+def manage_worlds():
+    pass
+
+# allows user to ban/unban
+def manage_users():
+    pass
 
 # installs and updates the base server files
 def update_server(clear_on_start: bool, pause_when_done: bool, verify_hash: bool):
@@ -233,7 +618,7 @@ def update_server(clear_on_start: bool, pause_when_done: bool, verify_hash: bool
             print_and_log("Be aware that this will disable file verification, meaning you may be running corrupted and incomplete files.\n", UPDATE_SERVER_LOG_FILE)
             currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
             print_and_log("[FAIL] Failed updating server! (" + currenttime + ")\n", UPDATE_SERVER_LOG_FILE)
-            input("Press enter to return to the main menu...")
+            input("Press enter to continue...")
         currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
         print_and_log("File verification passed! (" + currenttime + ")\n", UPDATE_SERVER_LOG_FILE)
         
@@ -251,10 +636,11 @@ def update_server(clear_on_start: bool, pause_when_done: bool, verify_hash: bool
     print_and_log("[FINISH] Finished updating server! (" + currenttime + ")\n", UPDATE_SERVER_LOG_FILE)
 
     if pause_when_done:
-        input("Press enter to return to the main menu...")
+        input("Press enter to continue...")
     
 # installs and updates core plugins such as Geyser
 # I intend to eventually make a plugin manager that will allow you to add custom sources, so this function can update other plugins as well
+# TODO: implement updates with plugin_repos file
 def update_plugins(pause_when_done: bool, verify_hash: bool):
     os.system("clear")
     file_exists(UPDATE_PLUGINS_LOG_FILE)
@@ -282,7 +668,7 @@ def update_plugins(pause_when_done: bool, verify_hash: bool):
             print_and_log("Be aware that this will disable file verification, meaning you may be running corrupted and incomplete files.\n", UPDATE_PLUGINS_LOG_FILE)
             currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
             print_and_log("[FAIL] Failed updating plugins! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
-            input("Press enter to return to the main menu...")
+            input("Press enter to continue...")
             return
         currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
         print_and_log("File verification passed! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
@@ -305,7 +691,7 @@ def update_plugins(pause_when_done: bool, verify_hash: bool):
             print_and_log("Be aware that this will disable file verification, meaning you may be running corrupted and incomplete files.\n", UPDATE_PLUGINS_LOG_FILE)
             currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
             print_and_log("[FAIL] Failed updating plugins! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
-            input("Press enter to return to the main menu...")
+            input("Press enter to continue...")
             return
         currenttime = datetime.datetime.now().strftime(DATETIME_FORMAT)
         print_and_log("File verification passed! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
@@ -315,7 +701,7 @@ def update_plugins(pause_when_done: bool, verify_hash: bool):
     print_and_log("[FINISH] Finished updating plugins! (" + currenttime + ")\n", UPDATE_PLUGINS_LOG_FILE)
 
     if (pause_when_done):
-        input("Press enter to return to the main menu...")
+        input("Press enter to continue...")
 
 # show last update times
 def show_last_update_times(pause_when_done=True):
@@ -362,7 +748,7 @@ def show_last_update_times(pause_when_done=True):
     print("Last Plugin Update Time: \'" + last_plugin_update_time + "\'\n")
             
     if pause_when_done:
-        input("Press enter to return to the main menu...")
+        input("Press enter to continue...")
 
 # check launch arguments
 def check_launch_arguments():
@@ -438,6 +824,10 @@ def check_launch_arguments():
             case _:
                 sys.exit("ERROR!: Invalid launch arguments given (" + str(args)[1:-1] + "). Use \"gssm help\" to view available launch arguments.")
 
+# returns the file name of the url passed into it
+def file_from_url(url: str) -> str:
+    return url[len(os.path.dirname(url)) + 1:]
+
 # prints message to terminal and logs it in the specified log
 def print_and_log(message: str, log: str, new_line_in_file = True):
     print(message)
@@ -460,9 +850,7 @@ while main_menu_loop_running:
     # print options
     print("What would you like to do?")
     print(" [R] - Run Server")
-    #print(" [M] - Manage Server") # TODO [low priority]: implement and nest options for things such as plugins, worlds, players, and settings
-    print(" [S] - Update Server") # TODO: merge update functions in update menu. create GSSM self-update function
-    print(" [P] - Update Plugins")
+    print(" [M] - Manage Server") # TODO [low priority]: implement and nest options for things such as plugins, worlds, players, and settings
     print(" [T] - Show Last Update Time")
     print(" [Q] - Quit")
     
@@ -475,14 +863,10 @@ while main_menu_loop_running:
         case "r":
             run_server(True, True)
 
-        # update server
-        case "s":
-            update_server(True, True, False) # do not verify hash; source does not currently provide fingerprint
-            
-        # update plugins
-        case "p":
-            update_plugins(True, True)
-            
+        # manage server
+        case "m":
+            manage_server()
+
         # show last update times
         case "t":
             show_last_update_times()
@@ -492,8 +876,8 @@ while main_menu_loop_running:
             os.system("clear")
             main_menu_loop_running = False
         
-        # default or failure to match input
+        # no match
         case _:
             os.system("clear")
-            print("ERROR!: Invalid option.\n\nSimply type the character found in the square brackets next to the desired function. For example, if I wanted to run \"[T] - Show Last Update Time\", I would simply enter \"t\" and press the enter key.\n")
-            input("Press enter to return to the main menu...")
+            print("ERROR!: Invalid option.\n\nSimply type the character found in the square brackets next to the desired function. \nFor example, if I wanted to run \"[T] - Show Last Update Time\", I would simply enter \"t\" and press the enter key.\n")
+            input("Press enter to continue...")
