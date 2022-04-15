@@ -3,6 +3,8 @@ The Geyser-Spigot Server Manager (or GSSM) is a tool that makes setting up a cro
 
 **Make sure you read about the current [issues](https://gitlab.com/nickgirga/gssm/-/issues) before using GSSM!**
 
+**Empty `updater` folder? We recently added a submodule. Additional work is needed for it to be accessible. See [here](https://gitlab.com/nickgirga/gssm/-/issues/2#note_913892829) to set it up!**
+
 # Getting Started
 If you're interested in utilizing the Geyser-Spigot Server Manager on your server, head over to the [Wiki](https://gitlab.com/nickgirga/gssm/-/wikis/home) to find out how to get started.
 
